@@ -28,12 +28,15 @@ type IThennable interface {
     BreakOnError(bool) IThennable
     Supply(interface{}) IThennable
     Then(IThennable) IThennable
+    Handle(FErrorHandler) IThennable
     Start(interface{}) IThennable
     End() (interface{}, error)
 }
 
 //FRunnable is the actual function we want to chain
 type FRunnable func(interface{}) (interface{}, error)
+
+type FErrorHandler func(error)
 
 //private implementation of IThennable
 type thennable struct {
@@ -72,6 +75,12 @@ func (tnb *thennable) Then(next IThennable) IThennable {
     }
     
     return next.BreakOnError(tnb.breakOnError).Start(tnb.state)
+}
+
+//Handle error
+func (tnb *thennable) Handle(handle FErrorHandler) IThennable {
+    handle(tnb.throw)
+    return tnb
 }
 
 //Start current runnable function

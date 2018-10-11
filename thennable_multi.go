@@ -7,6 +7,7 @@ type IThennableMulti interface {
     BreakOnError(bool) IThennableMulti
     Supply(...interface{}) IThennableMulti
     Then(IThennableMulti) IThennableMulti
+    Handle(FErrorHandler) IThennableMulti
     Start(...interface{}) IThennableMulti
     End() ([]interface{}, error)
 }
@@ -51,6 +52,12 @@ func (tnb *thenmulti) Then(next IThennableMulti) IThennableMulti {
     }
     
     return next.BreakOnError(tnb.breakOnError).Start(tnb.state...)
+}
+
+//Handle error
+func (tnb *thenmulti) Handle(handle FErrorHandler) IThennableMulti {
+    handle(tnb.throw)
+    return tnb
 }
 
 //Start current runnable function
