@@ -26,13 +26,14 @@ Example 2: Break on error
 */
 type IThennable interface {
     BreakOnError(bool) IThennable
+    Supply(interface{}) IThennable
     Then(IThennable) IThennable
-    Start(interface{}, error) IThennable
+    Start(interface{}) IThennable
     End() (interface{}, error)
 }
 
 //FRunnable is the actual function we want to chain
-type FRunnable func(interface{}, error) (interface{}, error)
+type FRunnable func(interface{}) (interface{}, error)
 
 //private implementation of IThennable
 type thennable struct {
@@ -59,19 +60,26 @@ func (tnb *thennable) BreakOnError(breakOnError bool) IThennable {
     return tnb
 }
 
+//Supply next runnable function with a value
+func (tnb *thennable) Supply(param interface{}) IThennable {
+    return &thennable{state: param, breakOnError: tnb.breakOnError}
+}
+
 //Then do next runnable function
 func (tnb *thennable) Then(next IThennable) IThennable {
-    return next.BreakOnError(tnb.breakOnError).Start(tnb.state, tnb.throw)
+    if tnb.breakOnError && tnb.throw != nil {
+        return tnb
+    }
+    
+    return next.BreakOnError(tnb.breakOnError).Start(tnb.state)
 }
 
 //Start current runnable function
-func (tnb *thennable) Start(param interface{}, err error) IThennable {
-    if err != nil && tnb.breakOnError {
-        tnb.state, tnb.throw = param, err
-    } else {
-        tnb.state, tnb.throw = tnb.runnable(param, err)
-    }
-    
+func (tnb *thennable) Start(param interface{}) IThennable {
+    // if tnb.throw != nil && tnb.breakOnError {
+    //     tnb.state, tnb.throw = param, err
+    // }
+    tnb.state, tnb.throw = tnb.runnable(param)
     return tnb
 }
 

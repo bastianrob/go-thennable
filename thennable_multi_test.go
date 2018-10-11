@@ -6,23 +6,23 @@ import (
     "testing"
 )
 
-func AddOne(val interface{}) (interface{}, error) {
-    intVal := val.(int)
-    return intVal + 1, nil
+func AddOneMulti(val ...interface{}) ([]interface{}, error) {
+    intVal := val[0].(int)
+    return []interface{}{intVal + 1}, nil
 }
 
-func Throwable(val interface{}) (interface{}, error) {
+func ThrowableMulti(val ...interface{}) ([]interface{}, error) {
     return nil, fmt.Errorf("Exception occurred with supplied value: %+v", val)
 }
 
-func Test_IThennable(t *testing.T) {
-    fmt.Println("Starting thennable_test.go")
+func Test_IThennableMulti(t *testing.T) {
+    fmt.Println("Starting thennable_multi_test.go")
     
-    addOne := thennable.New(AddOne)
-    throw := thennable.New(Throwable)
+    addOne := thennable.NewMulti(AddOneMulti)
+    throw := thennable.NewMulti(ThrowableMulti)
     
     //Test 1
-    result, err := thennable.Start(1).//starts with 1
+    result, err := thennable.StartMulti(1). //starts with 1
         Then(addOne). //add 1 with 1 = 2
         Then(addOne). //result = 3
         Then(addOne). //result = 4
@@ -30,7 +30,7 @@ func Test_IThennable(t *testing.T) {
         End()
     
     fmt.Printf("Test 1 State: %+v Error:%+v\n", result, err)
-    if result.(int) != 5 {
+    if result[0].(int) != 5 {
         t.Errorf("Test 1 result should be = 5, actual value: %d", result)
     }
     if err != nil {
@@ -38,10 +38,10 @@ func Test_IThennable(t *testing.T) {
     }
     
     //Test 2
-    result, err = thennable.Start(1).//starts with 1
+    result, err = thennable.StartMulti(1). //starts with 1
         Then(addOne). //add 1 with 1 = 2
         Then(addOne). //add 2 with 1 = 3
-        Then(throw). //result = nil, err = exception
+        Then(throw).  //result = nil, err = exception
         Then(addOne). //skipped
         Then(addOne). //skipped
         End()
@@ -55,18 +55,18 @@ func Test_IThennable(t *testing.T) {
     }
     
     //Test 3
-    result, err = thennable.Start(1).//starts with 1
+    result, err = thennable.StartMulti(1). //starts with 1
         BreakOnError(false). //keep propagating the function chain
         Then(addOne). //add 1 with 1 = 2
         Then(addOne). //result = 3
-        Then(throw).  //result = 0, err = exception ignored
-        Supply(0).    //resupply with 0
-        Then(addOne). //add 0 with 1 = 1, err = nil
-        Then(addOne). //result = 2, err = nil
+        Then(throw).  //result = nil, err = exception
+        Supply(0).     //resupply value with 0
+        Then(addOne). //add 0 with 1 = 1, err = exception from previous step
+        Then(addOne). //result = 2, err = exception from previous step
         End()
         
     fmt.Printf("Test 3 State: %+v Error:%+v\n", result, err)
-    if result.(int) != 2 {
+    if result[0].(int) != 2 {
         t.Errorf("Test 3 result should be = 2, actual value: %d", result)
     }
     if err != nil {
