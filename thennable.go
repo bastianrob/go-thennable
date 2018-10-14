@@ -1,59 +1,60 @@
 package thennable
 
+import (
+    "errors"
+    "reflect"
+)
+
+var (
+    ErrNotFunction = errors.New("Argument supplied must be a function")
+    ErrNoErrorHandling = errors.New("Function last return value must be an error")
+)
+
 /*
 IThennable is an interface for thennable
 The main purpose to to be able to chain execution of functions
-The chainnable function must be of type FRunnable
-Example 1: Normal execution
-    result, err := thennable.Start(1). --initial value of 1
-        --AddOne is a function that conforms to FRunnable. Adds 1 to supplied value.
-        Then(thennable.New(AddOne)). --1 + 1 = 2
-        --AddTwo is a function that conforms to FRunnable. Adds 2 to supplied value.
-        Then(thennable.New(AddTwo)). --2 + 2 = 4
-        --AddSix is a function that conforms to FRunnable. Adds 6 to supplied value.
-        Then(thennable.New(AddSix)). --4 + 6 = 10
-        End()
-    at this point, result = 10, err = nil
-Example 2: Break on error
-    result, err := thennable.Start(1). --initial value of 1
-        Then(thennable.New(AddOne)). --1 + 1 = 2
-        Then(thennable.New(AddTwo)). --2 + 2 = 4
-        --Exception is a function that conforms to FRunnable and returns an error
-        Then(thennable.New(Exception). -- err = error
-        Then(thennable.New(AddSix)). --AddSix ignored
-        End()
-    at this point, result = 4, err = error
 */
 type IThennable interface {
     BreakOnError(bool) IThennable
-    Supply(interface{}) IThennable
-    Then(IThennable) IThennable
+    Supply(...interface{}) IThennable
+    Then(interface{}) IThennable
     Handle(FErrorHandler) IThennable
-    Start(interface{}) IThennable
-    End() (interface{}, error)
+    End() ([]interface{}, error)
 }
 
-//FRunnable is the actual function we want to chain
-type FRunnable func(interface{}) (interface{}, error)
-
+//FErrorHandler function
 type FErrorHandler func(error)
 
 //private implementation of IThennable
 type thennable struct {
     throw        error
-    state        interface{}
-    runnable     FRunnable
+    state        []reflect.Value
+    runnable     reflect.Value
     breakOnError bool
 }
 
 //Start creating a new IThennable with and initial value/state
-func Start(state interface{}) IThennable {
+func Start(params ...interface{}) IThennable {
+    state := []reflect.Value{}
+    for _, param := range params {
+        state = append(state, reflect.ValueOf(param))
+    }
     return &thennable{state: state, breakOnError: true}
 }
 
-//New IThennable with a runnable function
-func New(runnable FRunnable) IThennable {
-    return &thennable{runnable: runnable, breakOnError: true}
+//Runnable function is a function that have at least error return value
+func newRunnable(fn interface{}) (runnable reflect.Value, err error) {
+    t := reflect.TypeOf(fn)
+    if t.Kind() != reflect.Func {
+        return runnable, ErrNotFunction
+    }
+    
+    out := t.NumOut()
+    if out <= 0 || t.Out(out-1).Name() != "error" {
+        return runnable, ErrNoErrorHandling
+    }
+    
+    return reflect.ValueOf(fn), nil
 }
 
 
@@ -64,17 +65,39 @@ func (tnb *thennable) BreakOnError(breakOnError bool) IThennable {
 }
 
 //Supply next runnable function with a value
-func (tnb *thennable) Supply(param interface{}) IThennable {
-    return &thennable{state: param, breakOnError: tnb.breakOnError}
+func (tnb *thennable) Supply(params ...interface{}) IThennable {
+    state := []reflect.Value{}
+    for _, param := range params {
+        state = append(state, reflect.ValueOf(param))
+    }
+    
+    return &thennable{state: state, breakOnError: tnb.breakOnError}
 }
 
-//Then do next runnable function
-func (tnb *thennable) Then(next IThennable) IThennable {
+func (tnb *thennable) Then(next interface{}) IThennable {
     if tnb.breakOnError && tnb.throw != nil {
         return tnb
     }
     
-    return next.BreakOnError(tnb.breakOnError).Start(tnb.state)
+    //if not runnable func
+    runnable, err := newRunnable(next)
+    if err != nil {
+        tnb.state, tnb.throw = make([]reflect.Value, 0), err
+        return tnb
+    }
+    
+    //else
+    result := runnable.Call(tnb.state)
+    retCount := len(result)
+    errIdx := retCount - 1
+
+    tnb.state, tnb.throw = result[0:errIdx], nil
+    lastOutput := result[errIdx].Interface()
+    if lastOutput != nil {
+        tnb.throw = lastOutput.(error)
+    }
+    
+    return tnb
 }
 
 //Handle error
@@ -83,16 +106,11 @@ func (tnb *thennable) Handle(handle FErrorHandler) IThennable {
     return tnb
 }
 
-//Start current runnable function
-func (tnb *thennable) Start(param interface{}) IThennable {
-    // if tnb.throw != nil && tnb.breakOnError {
-    //     tnb.state, tnb.throw = param, err
-    // }
-    tnb.state, tnb.throw = tnb.runnable(param)
-    return tnb
-}
-
 //End execution and collect the result
-func (tnb *thennable) End() (interface{}, error) {
-    return tnb.state, tnb.throw
+func (tnb *thennable) End() ([]interface{}, error) {
+    end := make([]interface{}, 0)
+    for _, state := range tnb.state {
+        end = append(end, state.Interface())
+    }
+    return end, tnb.throw
 }
